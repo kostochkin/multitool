@@ -92,3 +92,132 @@ lisp_eval form=(undefined-func 42)
 ## Persistence
 
 The SBCL image persists across all tool calls within a session. Functions you define, variables you set, packages you create — all survive. This is the key advantage: you build up an environment incrementally, like a live development session.
+
+## Reference: request/response examples for every tool
+
+Real examples. The JSON shown is the tool output (values are strings; `null` = absent in the image).
+
+### lisp_eval — simple evaluation
+```
+form: (+ 1 2)
+→ {"ok": true, "result": {"values": ["3"], "stdout": "", "conditions": []}}
+```
+
+### lisp_eval — stdout capture + multiple values + persistence
+```
+form: (format t "hello~%")
+→ {"ok": true, "result": {"values": ["NIL"], "stdout": "hello\n", "conditions": []}}
+
+form: (values 1 2 3)
+→ {"ok": true, "result": {"values": ["1", "2", "3"], "stdout": "", "conditions": []}}
+
+form: (defun square (x) (* x x))
+→ {"ok": true, "result": {"values": ["SQUARE"], ...}}   ; definition persists
+
+form: (square 7)
+→ {"ok": true, "result": {"values": ["49"], ...}}       ; available in later calls
+```
+
+### lisp_eval — condition raised (image pauses, restarts offered)
+```
+form: (+ 1 "oops")
+→ {"ok": "condition",
+   "condition": {"type": "TYPE-ERROR",
+                 "message": "The value\n  \"oops\"\nis not of type\n  NUMBER"},
+   "restarts": [{"name": "ABORT", "report": "ABORT"},
+                {"name": "ABORT", "report": "ABORT"}],
+   "thread": "w1"}
+```
+
+### lisp_invoke_restart — pick restart by 0-based index
+```
+thread: w1, index: 0            → ABORT unwinds the eval
+→ {"ok": true, "result": {"values": [], "stdout": "", "conditions": []}}
+; after ABORT the image is alive: (defun ...) and later evals still work
+
+thread: w2, index: 1, value: "42"   → USE-VALUE with a Lisp value
+→ same shape as a normal result; eval continues with 42 substituted
+```
+
+### lisp_eval — undefined function (richer restart set)
+```
+form: (sq 9)
+→ {"ok": "condition",
+   "condition": {"type": "UNDEFINED-FUNCTION",
+                 "message": "The function COMMON-LISP-USER::SQ is undefined."},
+   "restarts": [{"name": "CONTINUE"}, {"name": "USE-VALUE"},
+                {"name": "RETURN-VALUE"}, {"name": "RETURN-NOTHING"},
+                {"name": "ABORT"}, {"name": "ABORT"}],
+   "thread": "w1"}
+; typical move: ABORT (last index), then (defun sq ...) and retry
+```
+
+### lisp_introspect — packages / symbols / symbol / class
+```
+what: packages
+→ {"ok": true, "result": ["COMMON-LISP", "ALEXANDRIA", ...]}   ; sorted names
+
+what: symbols, name: ALEXANDRIA
+→ {"ok": true, "result": ["ALEXANDRIA:WHEN-LET", "..."]}       ; external symbols
+
+what: symbol, name: CL:LIST
+→ {"ok": true, "result": {"name": "LIST", "package": "COMMON-LISP",
+                          "fboundp": true, "boundp": null,
+                          "type": "compiled-function", "macro": null,
+                          "arglist": null,
+                          "documentation": "Construct and return a list containing the objects ARGS."}}
+
+what: class, name: CL:HASH-TABLE
+→ {"ok": true, "result": {"name": "HASH-TABLE", "superclasses": [...],
+                          "subclasses": [...], "slots": [{"name": "...", "allocation": "..."}],
+                          "documentation": "..."}}
+```
+
+### lisp_apropos — symbol search (case-insensitive substring)
+```
+pattern: hash
+→ {"ok": true, "result": [{"name": "MAKE-HASH-TABLE", "package": "COMMON-LISP",
+                           "fboundp": true, "boundp": null}, ...]}
+; can match hundreds — narrow the pattern or scan package-external symbols via lisp_introspect
+```
+
+### lisp_describe — full human-readable description
+```
+name: CL:LIST
+→ {"ok": true, "result": "LIST is a symbol...\nPackage: COMMON-LISP...\n"}  ; multi-line text
+```
+
+### lisp_macroexpand — one step (level 1) vs full
+```
+form: (when t 1), level: 1
+→ {"ok": true, "result": {"expanded": "(IF T\n    1)", "changed": true}}
+; changed=false means the form was already not a macro call
+
+form: (loop for i below 3 collect i)      ; no level = expand to the bottom
+→ {"ok": true, "result": {"expanded": "(SB-LOOP::DO ...)", "changed": true}}
+```
+
+### lisp_load — file (mounted at /work) or ASDF system
+```
+target: /work/src/utils.lisp
+→ {"ok": true, "result": {"success": true, "stdout": ""}}
+; definitions are immediately usable: (greet "world") → "Hello, world!"
+
+target: alexandria                         ; no extension → ASDF system
+→ {"ok": true, "result": {"success": true, "stdout": "..."}}
+; on failure: {"success": false, "error": "...", "stdout": "..."}
+```
+
+### lisp_run_tests — FiveAM
+```
+system: my-project-tests                   ; optional: ASDF system loaded first
+→ {"ok": true, "result": {"success": true, "stdout": "<FiveAM report>"}}
+; failures and failures summary appear in stdout — read it fully
+```
+
+### lisp_reset — fresh image
+```
+(no arguments)
+→ {"ok": true, "result": {"message": "image reset"}}
+; container recreated: every definition is gone, package state back to default
+```
