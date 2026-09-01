@@ -190,11 +190,12 @@ MCP tool call, use the same `params` object as the tool arguments
 ### lisp_macroexpand — one step (level 1) vs full
 ```json
 {"id":"r18","method":"macroexpand","params":{"form":"(when t 1)","level":1}}
-→ {"id":"r18","ok":true,"result":{"expanded":"(IF T\n    1)","changed":true}}
+→ {"id":"r18","ok":true,"result":{"expanded":"(IF T 1)","changed":true}}
 
 {"id":"r19","method":"macroexpand","params":{"form":"(when x a b)"}}
-→ {"id":"r19","ok":true,"result":{"expanded":"(IF X\n    (PROGN A B))","changed":true}}
+→ {"id":"r19","ok":true,"result":{"expanded":"(IF X (PROGN A B))","changed":true}}
 ; no "level" → expand to the bottom; changed=false → not a macro call
+; expansions are always single-line (no pretty-print whitespace)
 ```
 
 ### lisp_load — file mounted at /work

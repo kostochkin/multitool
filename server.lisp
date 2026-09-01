@@ -91,6 +91,7 @@
             (*print-level* 10)
             (*print-circle* t)
             (*print-lines* 50)
+            (*print-pretty* nil)
             (*print-readably* nil))
         (with-output-to-string (s)
           (prin1 object s)))
