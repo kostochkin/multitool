@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "sbcl-repl": {
+      "type": "local",
+      "command": ["{env:MULTITOOL_HOME}/.venv/bin/python3", "-m", "bridge"],
+      "cwd": "{env:MULTITOOL_HOME}",
+      "enabled": true,
+      "environment": {
+        "MULTITOOL_IMAGE": "sbcl-multitool:latest",
+        "MULTITOOL_WORKDIR": "{env:MULTITOOL_HOME}"
+      }
+    }
+  },
+  "skills": {
+    "paths": [".opencode/skills"]
+  }
+}
