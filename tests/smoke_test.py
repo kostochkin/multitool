@@ -113,6 +113,7 @@ def test():
     r = client.call_tool("lisp_macroexpand", {"form": "(when t 1)", "level": 1})
     d = extract_json(r["result"]["content"][0]["text"])
     check("macroexpand", d["ok"] is True and "IF" in d["result"]["expanded"], str(d))
+    check("macroexpand changed flag", d["result"]["changed"] is True, str(d))
 
     # 9. describe
     r = client.call_tool("lisp_describe", {"name": "CL:LIST"})

@@ -171,16 +171,15 @@ Returns the symbol or nil."
 (defun do-macroexpand (form level)
   "Macroexpand FORM. LEVEL 1 = macroexpand-1, else full macroexpand.
 Returns a hash-table with 'expanded' and 'changed'."
-  (let* ((form-obj (read-from-string form))
-         (result (if (and level (= level 1))
-                     (macroexpand-1 form-obj)
-                     (macroexpand form-obj)))
-         (expanded (car (multiple-value-list result)))
-         (changed (cadr (multiple-value-list result))))
-    (let ((obj (make-hash-table :test 'equal)))
-      (setf (gethash "expanded" obj) (safe-prin1 expanded))
-      (setf (gethash "changed" obj) (and changed t))
-      obj)))
+  (let ((form-obj (read-from-string form)))
+    (multiple-value-bind (expanded changed)
+        (if (and level (= level 1))
+            (macroexpand-1 form-obj)
+            (macroexpand form-obj))
+      (let ((obj (make-hash-table :test 'equal)))
+        (setf (gethash "expanded" obj) (safe-prin1 expanded))
+        (setf (gethash "changed" obj) (and changed t))
+        obj))))
 
 ;;; Load
 
