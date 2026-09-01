@@ -216,6 +216,12 @@
          (value (gethash "value" params))
          (session (find-session thread-id)))
     (cond
+      ((null thread-id)
+       (write-line-json (make-error-response id "missing 'thread' parameter")
+                        *standard-output*))
+      ((not (and (integerp index) (>= index 0)))
+       (write-line-json (make-error-response id "'index' must be a non-negative integer")
+                        *standard-output*))
       ((null session)
        (write-line-json (make-error-response id "no such session")
                         *standard-output*))
@@ -319,22 +325,37 @@
 ;;; Main read-loop
 
 (defun handle-request (req)
-  (let* ((id (gethash "id" req))
-         (method (gethash "method" req))
-         (params (or (gethash "params" req) (make-hash-table :test 'equal))))
+  (let ((method (gethash "method" req))
+        (id (gethash "id" req)))
     (cond
-      ((string= method "eval")            (dispatch-eval id params))
-      ((string= method "invoke_restart")  (dispatch-invoke-restart id params))
-      ((string= method "introspect")      (dispatch-introspect id params))
-      ((string= method "apropos")         (dispatch-apropos id params))
-      ((string= method "describe")        (dispatch-describe id params))
-      ((string= method "macroexpand")    (dispatch-macroexpand id params))
-      ((string= method "load")           (dispatch-load id params))
-      ((string= method "run_tests")       (dispatch-run-tests id params))
-      (t
+      ((not (stringp method))
        (write-line-json
-        (make-error-response id (format nil "unknown method: ~A" method))
-        *standard-output*)))))
+        (make-error-response
+         id "missing or invalid 'method' (must be a string)")
+        *standard-output*))
+      (t
+       (let ((raw-params (gethash "params" req)))
+         (cond
+           ((and raw-params (not (hash-table-p raw-params)))
+            (write-line-json
+             (make-error-response
+              id "'params' must be a JSON object")
+             *standard-output*))
+           (t
+            (let ((params (or raw-params (make-hash-table :test 'equal))))
+              (cond
+                ((string= method "eval")            (dispatch-eval id params))
+                ((string= method "invoke_restart")  (dispatch-invoke-restart id params))
+                ((string= method "introspect")      (dispatch-introspect id params))
+                ((string= method "apropos")         (dispatch-apropos id params))
+                ((string= method "describe")        (dispatch-describe id params))
+                ((string= method "macroexpand")     (dispatch-macroexpand id params))
+                ((string= method "load")            (dispatch-load id params))
+                ((string= method "run_tests")       (dispatch-run-tests id params))
+                (t
+                 (write-line-json
+                  (make-error-response id (format nil "unknown method: ~A" method))
+                  *standard-output*)))))))))))
 
 (defvar *swank-port* 4005
   "Port for the swank server (for SLIME/Sly developer access).")
@@ -351,20 +372,40 @@ Developers can connect via M-x slime-connect RET localhost RET <port>."
 
 (defun start (&key (swank t) (swank-port *swank-port*))
   "Start the miniswank server: read JSON-line requests from stdin.
-When SWANK is non-nil (default), also start a swank server for developer access."
+When SWANK is non-nil (default), also start a swank server for developer access.
+Malformed input never kills the server: bad lines produce an error
+response (or are silently skipped when empty) and the loop continues."
   (when swank
     (start-swank swank-port))
-  (handler-case
-      (loop
-        for req = (read-line-json *standard-input*)
-        while req
-        do (handler-case
-             (handle-request req)
-           (error (e)
-             (write-line-json
-              (make-error-response
-               (or (ignore-errors (gethash "id" req)) "error")
-               (format nil "~A" e))
-              *standard-output*))))
-    (end-of-file ()
-      nil)))
+  (loop
+    (handler-case
+        (progn
+          (let ((line (read-line *standard-input* nil nil)))
+            (when (null line)
+              (return))
+            (let ((trimmed (string-trim '(#\Space #\Tab #\Return #\Newline) line)))
+              (unless (string= trimmed "")
+                (let ((req (ignore-errors (decode-json trimmed))))
+                  (cond
+                    ((null req)
+                     (write-line-json
+                      (make-error-response nil "malformed JSON line")
+                      *standard-output*))
+                    ((not (hash-table-p req))
+                     (write-line-json
+                      (make-error-response nil "request must be a JSON object")
+                      *standard-output*))
+                    (t
+                     (handler-case
+                         (handle-request req)
+                       (error (e)
+                         (write-line-json
+                          (make-error-response
+                           (ignore-errors (gethash "id" req))
+                           (format nil "~A" e))
+                          *standard-output*))))))))))
+      (error (e)
+        ;; safety net: reply and keep the loop alive no matter what
+        (write-line-json
+         (make-error-response nil (format nil "~A" e))
+         *standard-output*)))))
