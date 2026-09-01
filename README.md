@@ -115,6 +115,18 @@ Build with:
 ./build.sh --no-cache # ignore layer cache
 ```
 
+### Manual container run
+
+For interactive development without the agent:
+
+```bash
+./run.sh              # detached dev-session; attach via slime-connect
+./run.sh --pipe       # type miniswank JSON-lines by hand (Ctrl-D to exit)
+./run.sh --stop       # stop and remove the dev container
+```
+
+Env overrides: `MULTITOOL_IMAGE`, `MULTITOOL_WORKDIR`, `MULTITOOL_SWANK_PORT` (e.g. `MULTITOOL_SWANK_PORT=4006 ./run.sh` to avoid a port clash with a live agent session).
+
 ## Phase 2
 
 - Dump core between sessions (`sb-ext:save-core`)
